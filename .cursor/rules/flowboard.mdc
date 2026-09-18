@@ -1,0 +1,26 @@
+---
+description: FlowBoard project context, conventions, and where to find commands
+alwaysApply: true
+---
+
+# FlowBoard
+
+Trello-inspired boards app (original UI/branding). Stack: Next.js 16, React 19, Prisma/Postgres, Auth.js, TanStack Query, dnd-kit, Vitest + Playwright.
+
+## Read first
+
+- `docs/PROJECT_CONTEXT.md` — architecture, conventions, pitfalls, roadmap
+- `docs/DEV_GUIDELINES.md` — setup + all npm commands + testing gate
+- `AGENTS.md` — Next.js 16 agent rules (may be refreshed by `next dev`)
+
+## Hard rules
+
+- Feature code under `src/features/<domain>/`; permissions via `src/lib/auth/permissions.ts`
+- Server Actions + Zod; optimistic board UI without remounting the canvas
+- Next 16 ≠ older Next — check `node_modules/next/dist/docs/` before API changes
+- Seed user: `john@acme.dev` / `password123`
+- Phases 1–9 done; do not start Phase 10 unless asked
+
+## Verify
+
+`npm run test` · `npm run typecheck` · `npm run lint` · `npm run test:e2e` (needs DB + seed; free port 3000)

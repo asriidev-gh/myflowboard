@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: flowboard-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: flowboard
+      POSTGRES_PASSWORD: flowboard
+      POSTGRES_DB: flowboard
+    volumes:
+      - flowboard_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowboard -d flowboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  flowboard_pg_data:
