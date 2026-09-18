@@ -138,7 +138,10 @@ export async function updateCardDetailsAction(
     });
   }
 
-  revalidateCard(access.boardId, access.workspaceId, parsed.data.cardId);
+  // Defer path revalidation so title/edits feel instant on the client.
+  after(() => {
+    revalidateCard(access.boardId, access.workspaceId, parsed.data.cardId);
+  });
   return { ok: true, message: "Card updated." };
 }
 
@@ -823,6 +826,14 @@ export async function uploadAttachmentAction(
       },
     });
 
+    const coverUrl = `/api/attachments/${attachment.id}`;
+    if (stored.mimeType.startsWith("image/")) {
+      await prisma.card.updateMany({
+        where: { id: cardId, coverImage: null },
+        data: { coverImage: coverUrl },
+      });
+    }
+
     revalidateCard(access.boardId, access.workspaceId, cardId);
     return { ok: true, id: attachment.id, message: "File uploaded." };
   } catch (error) {
@@ -872,7 +883,14 @@ export async function deleteAttachmentAction(
     // Continue deleting DB row even if storage delete fails
   }
 
-  await prisma.attachment.delete({ where: { id: attachment.id } });
+  const coverUrl = `/api/attachments/${attachment.id}`;
+  await prisma.$transaction([
+    prisma.attachment.delete({ where: { id: attachment.id } }),
+    prisma.card.updateMany({
+      where: { id: attachment.cardId, coverImage: coverUrl },
+      data: { coverImage: null },
+    }),
+  ]);
   revalidateCard(access.boardId, access.workspaceId, attachment.cardId);
   return { ok: true };
 }

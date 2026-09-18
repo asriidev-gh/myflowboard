@@ -18,7 +18,7 @@ async function main() {
       email: "john@acme.dev",
       passwordHash,
       timezone: "Asia/Singapore",
-      bio: "Building products with FlowBoard.",
+      bio: "Building products with My-FlowBoard.",
       notificationPrefs: { create: {} },
     },
   });
@@ -31,7 +31,7 @@ async function main() {
       email: "jane@acme.dev",
       passwordHash,
       timezone: "Asia/Singapore",
-      bio: "Designing flows on FlowBoard.",
+      bio: "Designing flows on My-FlowBoard.",
       notificationPrefs: { create: {} },
     },
   });
@@ -42,7 +42,7 @@ async function main() {
     create: {
       name: "Acme",
       slug: "acme",
-      description: "Demo workspace for FlowBoard.",
+      description: "Demo workspace for My-FlowBoard.",
       createdById: john.id,
       members: {
         create: [

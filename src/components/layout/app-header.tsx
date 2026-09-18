@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { LogOut, UserRound } from "lucide-react";
 
 import { MobileNav } from "@/components/layout/app-sidebar";
@@ -53,6 +54,14 @@ function initials(name?: string | null, email?: string | null) {
 }
 
 export function AppHeader({ user, notifications }: AppHeaderProps) {
+  const { data: session } = useSession();
+  // Prefer DB-backed props from the layout so a stale JWT cannot win.
+  const displayUser = {
+    name: user.name ?? session?.user?.name,
+    email: user.email ?? session?.user?.email,
+    image: user.image ?? session?.user?.image,
+  };
+
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background/80 px-3 backdrop-blur-md md:px-5">
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -75,9 +84,11 @@ export function AppHeader({ user, notifications }: AppHeaderProps) {
             aria-label="Account menu"
           >
             <Avatar className="size-8">
-              {user.image ? <AvatarImage src={user.image} alt="" /> : null}
+              {displayUser.image ? (
+                <AvatarImage src={displayUser.image} alt="" />
+              ) : null}
               <AvatarFallback className="text-xs">
-                {initials(user.name, user.email)}
+                {initials(displayUser.name, displayUser.email)}
               </AvatarFallback>
             </Avatar>
           </DropdownMenuTrigger>
@@ -86,10 +97,10 @@ export function AppHeader({ user, notifications }: AppHeaderProps) {
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col gap-0.5">
                   <span className="text-sm font-medium">
-                    {user.name ?? "Account"}
+                    {displayUser.name ?? "Account"}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {user.email}
+                    {displayUser.email}
                   </span>
                 </div>
               </DropdownMenuLabel>

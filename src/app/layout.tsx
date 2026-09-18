@@ -24,6 +24,10 @@ export const metadata: Metadata = {
     template: `%s · ${branding.name}`,
   },
   description: branding.description,
+  icons: {
+    icon: branding.logoSrc,
+    apple: branding.logoSrc,
+  },
 };
 
 export default function RootLayout({

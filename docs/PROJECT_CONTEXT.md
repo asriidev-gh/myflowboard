@@ -1,11 +1,11 @@
-# FlowBoard — Project Context (for AI agents)
+# My-FlowBoard — Project Context (for AI agents)
 
 Use this file as the source of truth for architecture, conventions, and gotchas.
 Human day-to-day commands live in [`DEV_GUIDELINES.md`](./DEV_GUIDELINES.md).
 
 ## Product
 
-- **Name**: FlowBoard (temporary; branding in `src/lib/branding.ts` + `NEXT_PUBLIC_APP_NAME`)
+- **Name**: My-FlowBoard (branding in `src/lib/branding.ts` + `NEXT_PUBLIC_APP_NAME`)
 - **What**: Trello-inspired project management — workspaces, boards, lists, cards
 - **Not**: A Trello clone of UI/assets; keep original design and naming
 

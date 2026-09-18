@@ -30,7 +30,7 @@ export class CloudinaryStorageProvider implements StorageProvider {
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
     const apiKey = process.env.CLOUDINARY_API_KEY;
     const apiSecret = process.env.CLOUDINARY_API_SECRET;
-    const folder = process.env.CLOUDINARY_FOLDER ?? "flowboard";
+    const folder = process.env.CLOUDINARY_FOLDER ?? "my-flowboard";
 
     if (!cloudName || !apiKey || !apiSecret) {
       throw new Error(

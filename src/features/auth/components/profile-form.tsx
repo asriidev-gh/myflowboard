@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -10,7 +12,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { updateProfileAction } from "@/features/auth/profile-actions";
+import { AvatarPickerDialog } from "@/features/auth/components/avatar-picker-dialog";
+import {
+  removeAvatarAction,
+  updateProfileAction,
+  uploadAvatarAction,
+} from "@/features/auth/profile-actions";
 import { profileSchema } from "@/features/auth/schemas";
 
 const formSchema = profileSchema.extend({
@@ -58,8 +65,18 @@ const TIMEZONES = [
 ];
 
 export function ProfileForm({ user }: ProfileFormProps) {
+  const router = useRouter();
+  const { update: updateSession } = useSession();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
+  const [avatarPending, startAvatarTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [optimisticImage, setOptimisticImage] = useState<
+    string | null | undefined
+  >(undefined);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const imageUrl =
+    optimisticImage !== undefined ? optimisticImage : (user.image ?? null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -71,6 +88,11 @@ export function ProfileForm({ user }: ProfileFormProps) {
     },
   });
 
+  async function syncSessionAndRefresh() {
+    await updateSession();
+    router.refresh();
+  }
+
   function onSubmit(values: FormValues) {
     setError(null);
     startTransition(async () => {
@@ -80,8 +102,52 @@ export function ProfileForm({ user }: ProfileFormProps) {
         toast.error(result.error);
         return;
       }
+
+      await syncSessionAndRefresh();
       toast.success(result.message ?? "Saved");
     });
+  }
+
+  function onAvatarSelected(fileList: FileList | null) {
+    const file = fileList?.[0];
+    if (!file) return;
+
+    const body = new FormData();
+    body.set("file", file);
+
+    startAvatarTransition(async () => {
+      const result = await uploadAvatarAction(body);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+
+      setOptimisticImage(result.image ?? null);
+      await syncSessionAndRefresh();
+      toast.success(result.message ?? "Avatar updated");
+    });
+  }
+
+  function onRemoveAvatar() {
+    startAvatarTransition(async () => {
+      const result = await removeAvatarAction();
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+
+      setOptimisticImage(null);
+      await syncSessionAndRefresh();
+      toast.success(result.message ?? "Avatar removed");
+    });
+  }
+
+  async function onGeneratedAvatarSelected(image: string) {
+    setOptimisticImage(image);
+    await syncSessionAndRefresh();
   }
 
   return (
@@ -90,21 +156,68 @@ export function ProfileForm({ user }: ProfileFormProps) {
       className="flex flex-col gap-5"
       noValidate
     >
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <Avatar className="size-16">
-          {user.image ? <AvatarImage src={user.image} alt="" /> : null}
+          {imageUrl ? <AvatarImage src={imageUrl} alt="" /> : null}
           <AvatarFallback>
             {(user.name || user.email).slice(0, 2).toUpperCase()}
           </AvatarFallback>
         </Avatar>
-        <div>
+        <div className="space-y-2">
           <p className="text-sm font-medium">Avatar</p>
           <p className="text-xs text-muted-foreground">
-            Upload support arrives with attachments (Phase 5).
+            Upload a photo, or pick a free DiceBear avatar.
           </p>
+          <div className="flex flex-wrap gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              className="sr-only"
+              onChange={(event) => onAvatarSelected(event.target.files)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={avatarPending}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {avatarPending ? "Uploading…" : "Upload photo"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={avatarPending}
+              onClick={() => setPickerOpen(true)}
+            >
+              Choose avatar
+            </Button>
+            {imageUrl ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={avatarPending}
+                onClick={onRemoveAvatar}
+              >
+                Remove
+              </Button>
+            ) : null}
+          </div>
         </div>
       </div>
 
+      <AvatarPickerDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        userSeed={user.name || user.email}
+        currentImage={imageUrl}
+        onSelected={(image) => {
+          void onGeneratedAvatarSelected(image);
+        }}
+      />
       <div className="space-y-2">
         <Label htmlFor="name">Name</Label>
         <Input id="name" {...form.register("name")} />

@@ -103,6 +103,7 @@ export default async function BoardPage({
               position: card.position,
               dueDate: card.dueDate,
               isCompleted: card.isCompleted,
+              coverImage: card.coverImage,
               labels: card.labels,
               members: card.members,
             })),

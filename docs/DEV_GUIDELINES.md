@@ -1,4 +1,4 @@
-# FlowBoard — Developer Guidelines
+# My-FlowBoard — Developer Guidelines
 
 Cheat sheet for local setup, daily commands, testing, and common workflows.
 Architecture detail: [`PROJECT_CONTEXT.md`](./PROJECT_CONTEXT.md).

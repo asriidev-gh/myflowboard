@@ -36,7 +36,7 @@ export default async function ProfileSettingsPage() {
           Profile
         </h1>
         <p className="text-sm text-muted-foreground">
-          Update how you appear across {process.env.NEXT_PUBLIC_APP_NAME ?? "FlowBoard"}.
+          Update how you appear across {process.env.NEXT_PUBLIC_APP_NAME ?? "My-FlowBoard"}.
         </p>
       </div>
 

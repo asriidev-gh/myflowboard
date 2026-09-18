@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, MoreHorizontal, Plus } from "lucide-react";
+import { GripVertical, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import {
   useLayoutEffect,
   useMemo,
@@ -29,6 +29,7 @@ import {
   useState,
   useSyncExternalStore,
   useTransition,
+  type ClipboardEvent,
   type ReactNode,
 } from "react";
 import { useForm } from "react-hook-form";
@@ -36,6 +37,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,6 +77,7 @@ import {
   isBoardFiltersActive,
   type BoardFiltersState,
 } from "@/features/boards/components/board-filters";
+import { uploadAttachmentAction } from "@/features/cards/actions";
 import { CardDetailDialog } from "@/features/cards/components/card-detail-dialog";
 import { fetchCardDetail } from "@/features/cards/fetch-card-detail";
 import {
@@ -79,6 +89,7 @@ import {
   type BoardCardContext,
   type CardDetailSeed,
 } from "@/features/cards/types";
+import { MAX_UPLOAD_BYTES } from "@/lib/storage/types";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -88,6 +99,7 @@ export type BoardCardModel = {
   position: string;
   dueDate?: string | Date | null;
   isCompleted?: boolean;
+  coverImage?: string | null;
   labels?: { id: string; name: string; color: string }[];
   members?: {
     id: string;
@@ -154,11 +166,22 @@ function listsSignature(lists: BoardListModel[]) {
               .map((l) => l.id)
               .sort()
               .join("+");
-            return `${card.id}:${card.position}:${card.isCompleted ? 1 : 0}:${memberIds}:${labelIds}`;
+            return `${card.id}:${card.position}:${card.isCompleted ? 1 : 0}:${card.title}:${card.coverImage ?? ""}:${memberIds}:${labelIds}`;
           })
           .join(",")}`,
     )
     .join("|");
+}
+
+function CardCoverImage({ src }: { src: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- authenticated attachment URLs
+    <img
+      src={src}
+      alt=""
+      className="h-28 w-full bg-muted object-cover"
+    />
+  );
 }
 
 /** False on the server and during hydration; true only after client mount. */
@@ -327,6 +350,17 @@ export function BoardCanvas({
         ...list,
         cards: list.cards.map((card) =>
           card.id === cardId ? { ...card, labels } : card,
+        ),
+      })),
+    );
+  }
+
+  function setCardTitle(cardId: string, title: string) {
+    setLists((prev) =>
+      prev.map((list) => ({
+        ...list,
+        cards: list.cards.map((card) =>
+          card.id === cardId ? { ...card, title } : card,
         ),
       })),
     );
@@ -551,6 +585,7 @@ export function BoardCanvas({
             boardContext={boardContext}
             onMembersChange={setCardMembers}
             onLabelsChange={setCardLabels}
+            onTitleChange={setCardTitle}
             onOpenChange={(next) => {
               if (!next) setOpenCardId(null);
             }}
@@ -612,8 +647,11 @@ export function BoardCanvas({
           </div>
         ) : null}
         {active?.type === "card" ? (
-          <div className="w-64 rounded-lg border bg-card p-2.5 shadow-lg">
-            <p className="text-sm">{active.card.title}</p>
+          <div className="w-64 overflow-hidden rounded-lg border bg-card shadow-lg">
+            {active.card.coverImage ? (
+              <CardCoverImage src={active.card.coverImage} />
+            ) : null}
+            <p className="p-2.5 text-sm">{active.card.title}</p>
           </div>
         ) : null}
       </DragOverlay>
@@ -628,6 +666,7 @@ export function BoardCanvas({
           boardContext={boardContext}
           onMembersChange={setCardMembers}
           onLabelsChange={setCardLabels}
+          onTitleChange={setCardTitle}
           onOpenChange={(next) => {
             if (!next) setOpenCardId(null);
           }}
@@ -660,11 +699,13 @@ function StaticList({
             <button
               key={card.id}
               type="button"
-              className="cursor-pointer rounded-lg border bg-card p-2.5 text-left shadow-sm"
+              className="cursor-pointer overflow-hidden rounded-lg border bg-card text-left shadow-sm"
               onPointerEnter={() => onPrefetchCard(card.id)}
               onFocus={() => onPrefetchCard(card.id)}
               onClick={() => onOpenCard(card.id)}
             >
+              {card.coverImage ? <CardCoverImage src={card.coverImage} /> : null}
+              <div className="p-2.5">
               {card.labels && card.labels.length > 0 ? (
                 <div className="mb-1.5 flex flex-wrap gap-1">
                   {card.labels.map((label) => (
@@ -694,6 +735,7 @@ function StaticList({
                   {formatDueDate(card.dueDate)}
                 </span>
               ) : null}
+              </div>
             </button>
           );
         })}
@@ -825,6 +867,7 @@ function SortableCard({
   onPrefetch: () => void;
   onArchive: () => void;
 }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const dueState = getDueVisualState(card.dueDate, !!card.isCompleted);
 
   const {
@@ -845,15 +888,18 @@ function SortableCard({
   };
 
   return (
+    <>
     <article
       ref={setNodeRef}
       style={style}
       className={cn(
-        "cursor-pointer rounded-lg border bg-card p-2.5 shadow-sm",
+        "cursor-pointer overflow-hidden rounded-lg border bg-card shadow-sm",
         isDragging && "opacity-40",
       )}
       onPointerEnter={onPrefetch}
     >
+      {card.coverImage ? <CardCoverImage src={card.coverImage} /> : null}
+      <div className="p-2.5">
       <div className="flex items-start gap-1">
         <button
           type="button"
@@ -915,19 +961,50 @@ function SortableCard({
             ) : null}
           </div>
         </button>
-      </div>
-
-      <div className="mt-2 flex items-center justify-end gap-1 pl-5">
         <Button
           type="button"
           variant="ghost"
-          size="xs"
-          onClick={onArchive}
+          size="icon-sm"
+          className="shrink-0 text-muted-foreground hover:text-destructive"
+          aria-label="Archive card"
+          title="Archive"
+          onClick={(event) => {
+            event.stopPropagation();
+            setConfirmOpen(true);
+          }}
         >
-          Archive
+          <Trash2 className="size-3.5" />
         </Button>
       </div>
+      </div>
     </article>
+
+    <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Archive card?</DialogTitle>
+          <DialogDescription>
+            Archive <strong>{card.title}</strong>? It will be removed from this
+            board list.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              setConfirmOpen(false);
+              onArchive();
+            }}
+          >
+            Archive
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -993,10 +1070,67 @@ function AddCardForm({
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [pastedImage, setPastedImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const form = useForm<CreateCardInput>({
     resolver: zodResolver(createCardSchema),
     defaultValues: { listId, title: "" },
   });
+
+  function replacePastedImage(file: File | null) {
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return file ? URL.createObjectURL(file) : null;
+    });
+    setPastedImage(file);
+  }
+
+  function clearPastedImage() {
+    replacePastedImage(null);
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLFormElement>) {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (!item.type.startsWith("image/")) continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+
+      event.preventDefault();
+
+      if (file.size > MAX_UPLOAD_BYTES) {
+        toast.error("Image exceeds the 10 MB size limit.");
+        return;
+      }
+
+      const extension = file.type.split("/")[1] || "png";
+      const named =
+        file.name && file.name !== "image.png"
+          ? file
+          : new File([file], `pasted-image.${extension}`, {
+              type: file.type,
+              lastModified: file.lastModified,
+            });
+
+      replacePastedImage(named);
+      if (!form.getValues("title").trim()) {
+        form.setValue("title", "Pasted image", {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+      }
+      toast.success("Image ready to attach");
+      return;
+    }
+  }
+
+  function closeForm() {
+    clearPastedImage();
+    form.reset({ listId, title: "" });
+    setOpen(false);
+  }
 
   if (!open) {
     return (
@@ -1014,38 +1148,91 @@ function AddCardForm({
   return (
     <form
       className="m-2 space-y-2"
+      onPaste={handlePaste}
       onSubmit={form.handleSubmit((values) => {
         startTransition(async () => {
-          const result = await createCardAction(values);
+          const title = values.title.trim() || (pastedImage ? "Pasted image" : "");
+          if (!title) {
+            toast.error("Title is required");
+            return;
+          }
+
+          const result = await createCardAction({
+            listId: values.listId,
+            title,
+          });
           if (!result.ok) {
             toast.error(result.error);
             return;
           }
+
+          let coverImage: string | null = null;
+          if (result.id && pastedImage) {
+            const body = new FormData();
+            body.set("cardId", result.id);
+            body.set("file", pastedImage);
+            const upload = await uploadAttachmentAction(body);
+            if (!upload.ok) {
+              toast.error(
+                upload.error ||
+                  "Card created, but the image could not be attached.",
+              );
+            } else if (upload.id) {
+              coverImage = `/api/attachments/${upload.id}`;
+            }
+          }
+
           if (result.id && result.position) {
             onCreated(listId, {
               id: result.id,
-              title: values.title.trim(),
+              title,
               position: result.position,
+              coverImage,
               labels: [],
               members: [],
             });
           }
+          clearPastedImage();
           form.reset({ listId, title: "" });
           setOpen(false);
         });
       })}
     >
-      <Input autoFocus placeholder="Card title" {...form.register("title")} />
+      <Input
+        autoFocus
+        placeholder="Card title — or paste an image"
+        {...form.register("title")}
+      />
+      {previewUrl && pastedImage ? (
+        <div className="relative overflow-hidden rounded-lg border bg-muted/40">
+          {/* eslint-disable-next-line @next/next/no-img-element -- local blob preview */}
+          <img
+            src={previewUrl}
+            alt="Pasted preview"
+            className="max-h-36 w-full object-contain"
+          />
+          <button
+            type="button"
+            className="absolute top-1.5 right-1.5 rounded-full bg-background/90 p-1 text-muted-foreground shadow-sm hover:text-foreground"
+            aria-label="Remove pasted image"
+            onClick={clearPastedImage}
+          >
+            <X className="size-3.5" />
+          </button>
+          <p className="truncate px-2 py-1 text-xs text-muted-foreground">
+            {pastedImage.name}
+          </p>
+        </div>
+      ) : (
+        <p className="px-0.5 text-xs text-muted-foreground">
+          Tip: paste (Ctrl/⌘+V) an image to attach it.
+        </p>
+      )}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={pending}>
           {pending ? "Adding…" : "Add"}
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => setOpen(false)}
-        >
+        <Button type="button" size="sm" variant="ghost" onClick={closeForm}>
           Cancel
         </Button>
       </div>

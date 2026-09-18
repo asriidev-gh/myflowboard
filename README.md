@@ -1,8 +1,8 @@
-# FlowBoard
+# My-FlowBoard
 
 Modern project management boards for teams — workspaces, boards, lists, and cards.
 
-> Temporary product name. Branding is centralized in `src/lib/branding.ts` and `NEXT_PUBLIC_APP_NAME`.
+> Branding is centralized in `src/lib/branding.ts` and `NEXT_PUBLIC_APP_NAME`.
 
 ## Requirements
 

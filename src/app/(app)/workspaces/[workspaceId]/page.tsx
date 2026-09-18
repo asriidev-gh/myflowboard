@@ -159,7 +159,7 @@ export default async function WorkspaceDetailPage({
         <CardHeader>
           <CardTitle className="text-base">Members</CardTitle>
           <CardDescription>
-            Invite teammates by email. They must already have a FlowBoard
+            Invite teammates by email. They must already have a My-FlowBoard
             account.
           </CardDescription>
         </CardHeader>

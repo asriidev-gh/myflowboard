@@ -8,7 +8,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# FlowBoard project docs
+# My-FlowBoard project docs
 
 - Architecture & AI context: `docs/PROJECT_CONTEXT.md`
 - Developer commands & testing: `docs/DEV_GUIDELINES.md`

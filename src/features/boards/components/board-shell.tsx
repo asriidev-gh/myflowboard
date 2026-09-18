@@ -84,7 +84,7 @@ function shellListsSignature(lists: BoardListModel[]) {
               .map((m) => m.id)
               .sort()
               .join("+");
-            return `${card.id}:${memberIds}`;
+            return `${card.id}:${card.title}:${card.coverImage ?? ""}:${memberIds}`;
           })
           .join(",")}`,
     )
@@ -175,6 +175,17 @@ export function BoardShell({
     );
   }
 
+  function setCardTitle(cardId: string, title: string) {
+    setLists((prev) =>
+      prev.map((list) => ({
+        ...list,
+        cards: list.cards.map((card) =>
+          card.id === cardId ? { ...card, title } : card,
+        ),
+      })),
+    );
+  }
+
   function changeView(next: BoardViewMode) {
     setView(next);
     const params = new URLSearchParams();
@@ -245,6 +256,7 @@ export function BoardShell({
           boardContext={boardContext}
           onMembersChange={setCardMembers}
           onLabelsChange={setCardLabels}
+          onTitleChange={setCardTitle}
           onOpenChange={(next) => {
             if (!next) {
               setOpenCardId(null);

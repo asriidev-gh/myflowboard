@@ -1,9 +1,9 @@
 ---
-description: FlowBoard project context, conventions, and where to find commands
+description: My-FlowBoard project context, conventions, and where to find commands
 alwaysApply: true
 ---
 
-# FlowBoard
+# My-FlowBoard
 
 Trello-inspired boards app (original UI/branding). Stack: Next.js 16, React 19, Prisma/Postgres, Auth.js, TanStack Query, dnd-kit, Vitest + Playwright.
 

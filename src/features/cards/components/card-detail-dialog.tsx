@@ -88,6 +88,8 @@ interface CardDetailDialogProps {
   onMembersChange?: (cardId: string, members: CardDetailMember[]) => void;
   /** Keep the board canvas in sync when labels change. */
   onLabelsChange?: (cardId: string, labels: CardDetailLabel[]) => void;
+  /** Keep the board canvas in sync when the title changes. */
+  onTitleChange?: (cardId: string, title: string) => void;
 }
 
 function initials(name: string | null, email: string) {
@@ -121,6 +123,7 @@ export function CardDetailDialog({
   boardContext,
   onMembersChange,
   onLabelsChange,
+  onTitleChange,
 }: CardDetailDialogProps) {
   const queryClient = useQueryClient();
   const [pending, startTransition] = useTransition();
@@ -195,6 +198,55 @@ export function CardDetailDialog({
     toast.error(error instanceof Error ? error.message : "Failed to load card");
     onOpenChange(false);
   }, [open, isError, error, onOpenChange]);
+
+  function syncTitle(nextTitle: string) {
+    onTitleChange?.(cardId, nextTitle);
+    queryClient.setQueryData(
+      cardDetailQueryKey(cardId),
+      (current: CardDetail | undefined) => {
+        const base =
+          current ?? (seed ? seedToCardDetail(seed) : undefined);
+        if (!base) return base;
+        return { ...base, title: nextTitle };
+      },
+    );
+  }
+
+  function saveTitle(rawTitle: string) {
+    if (!canEdit || !card) {
+      setTitleDraft(null);
+      return;
+    }
+    const trimmed = rawTitle.trim();
+    if (!trimmed) {
+      setTitleDraft(null);
+      toast.error("Title is required");
+      return;
+    }
+    if (trimmed === card.title) {
+      setTitleDraft(null);
+      return;
+    }
+
+    // Optimistic: update board + cache immediately; persist in the background.
+    syncTitle(trimmed);
+    setTitleDraft(null);
+    void updateCardDetailsAction({ cardId: card.id, title: trimmed }).then(
+      (result) => {
+        if (!result.ok) {
+          toast.error(result.error ?? "Could not update title");
+          syncTitle(card.title);
+        }
+      },
+    );
+  }
+
+  function flushTitleAndClose() {
+    if (titleDraft !== null) {
+      saveTitle(titleDraft);
+    }
+    onOpenChange(false);
+  }
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>) {
     startTransition(async () => {
@@ -287,7 +339,16 @@ export function CardDetailDialog({
     : "none";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          flushTitleAndClose();
+          return;
+        }
+        onOpenChange(next);
+      }}
+    >
       <DialogContent
         className="flex max-h-[90vh] w-full max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
         showCloseButton={false}
@@ -306,21 +367,18 @@ export function CardDetailDialog({
               {card || seed ? (
                 <Input
                   value={title}
-                  disabled={!canEdit || pending || !card}
+                  disabled={!canEdit || !card}
                   className="h-auto border-0 bg-transparent px-0 text-lg font-semibold shadow-none focus-visible:ring-0"
                   onChange={(e) => setTitleDraft(e.target.value)}
                   onBlur={() => {
-                    if (!canEdit || !card || title.trim() === card.title) {
-                      setTitleDraft(null);
-                      return;
+                    if (titleDraft === null) return;
+                    saveTitle(titleDraft);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      (e.target as HTMLInputElement).blur();
                     }
-                    run(() =>
-                      updateCardDetailsAction({
-                        cardId: card.id,
-                        title: title.trim(),
-                      }),
-                    );
-                    setTitleDraft(null);
                   }}
                 />
               ) : (
@@ -331,7 +389,7 @@ export function CardDetailDialog({
               variant="ghost"
               size="icon-sm"
               aria-label="Close"
-              onClick={() => onOpenChange(false)}
+              onClick={flushTitleAndClose}
             >
               <X className="size-4" />
             </Button>

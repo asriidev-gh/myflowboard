@@ -5,6 +5,7 @@ import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { getNotificationBadge } from "@/features/notifications/queries";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/db/prisma";
 
 export default async function AppLayout({
   children,
@@ -16,7 +17,17 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  const badge = await getNotificationBadge(session.user.id);
+  const [badge, dbUser] = await Promise.all([
+    getNotificationBadge(session.user.id),
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { name: true, email: true, image: true },
+    }),
+  ]);
+
+  if (!dbUser) {
+    redirect("/login");
+  }
 
   return (
     <div className="flex min-h-svh w-full bg-background">
@@ -24,7 +35,7 @@ export default async function AppLayout({
       <AppSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader
-          user={session.user}
+          user={dbUser}
           notifications={{
             unreadCount: badge.unreadCount,
             items: badge.notifications,

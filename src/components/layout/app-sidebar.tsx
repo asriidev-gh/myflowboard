@@ -66,8 +66,8 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 export function AppSidebar() {
   return (
     <aside className="hidden w-60 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex md:flex-col">
-      <div className="flex h-14 items-center px-4">
-        <Logo />
+      <div className="flex items-center px-4 py-4">
+        <Logo size="sm" />
       </div>
       <Separator />
       <div className="flex-1 overflow-y-auto p-3">
@@ -95,9 +95,9 @@ export function MobileNav() {
         <Menu className="size-5" />
       </SheetTrigger>
       <SheetContent side="left" className="w-72 bg-sidebar p-0 text-sidebar-foreground">
-        <SheetHeader className="h-14 justify-center border-b border-sidebar-border px-4">
+        <SheetHeader className="border-b border-sidebar-border px-4 py-4 text-left">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <Logo />
+          <Logo size="sm" />
         </SheetHeader>
         <div className="p-3">
           <NavLinks onNavigate={() => setOpen(false)} />
