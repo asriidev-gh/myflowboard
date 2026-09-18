@@ -295,63 +295,78 @@ export async function toggleCardLabelAction(
   const parsed = toggleCardLabelSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid input." };
 
-  let access;
-  try {
-    access = await requireCardAccess(parsed.data.cardId, auth.userId);
-  } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : "Access denied.",
-    };
-  }
+  const { cardId, labelId } = parsed.data;
 
-  if (!canEditBoardContent(access.role)) {
-    return { ok: false, error: "You cannot change labels." };
-  }
-
-  const existing = await prisma.cardLabel.findUnique({
+  const card = await prisma.card.findFirst({
     where: {
-      cardId_labelId: {
-        cardId: parsed.data.cardId,
-        labelId: parsed.data.labelId,
+      id: cardId,
+      list: {
+        board: {
+          workspace: { members: { some: { userId: auth.userId } } },
+        },
+      },
+    },
+    select: {
+      id: true,
+      list: {
+        select: {
+          boardId: true,
+          board: {
+            select: {
+              workspaceId: true,
+              workspace: {
+                select: {
+                  members: {
+                    where: { userId: auth.userId },
+                    select: { role: true },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     },
   });
 
-  if (existing) {
-    await prisma.cardLabel.delete({ where: { id: existing.id } });
-    await prisma.activity.create({
-      data: {
-        workspaceId: access.workspaceId,
-        boardId: access.boardId,
-        cardId: parsed.data.cardId,
-        actorId: auth.userId,
-        action: "UNLABELED",
-        entityType: "label",
-        entityId: parsed.data.labelId,
-      },
-    });
-  } else {
+  if (!card) {
+    return { ok: false, error: "Card not found or access denied." };
+  }
+
+  const role = card.list.board.workspace.members[0]?.role ?? "GUEST";
+  if (!canEditBoardContent(role)) {
+    return { ok: false, error: "You cannot change labels." };
+  }
+
+  const boardId = card.list.boardId;
+  const workspaceId = card.list.board.workspaceId;
+
+  const removed = await prisma.cardLabel.deleteMany({
+    where: { cardId, labelId },
+  });
+
+  const nowLabeled = removed.count === 0;
+  if (nowLabeled) {
     await prisma.cardLabel.create({
-      data: {
-        cardId: parsed.data.cardId,
-        labelId: parsed.data.labelId,
-      },
-    });
-    await prisma.activity.create({
-      data: {
-        workspaceId: access.workspaceId,
-        boardId: access.boardId,
-        cardId: parsed.data.cardId,
-        actorId: auth.userId,
-        action: "LABELED",
-        entityType: "label",
-        entityId: parsed.data.labelId,
-      },
+      data: { cardId, labelId },
     });
   }
 
-  revalidateCard(access.boardId, access.workspaceId, parsed.data.cardId);
+  after(async () => {
+    await prisma.activity.create({
+      data: {
+        workspaceId,
+        boardId,
+        cardId,
+        actorId: auth.userId,
+        action: nowLabeled ? "LABELED" : "UNLABELED",
+        entityType: "label",
+        entityId: labelId,
+      },
+    });
+    revalidatePath(`/boards/${boardId}`);
+  });
+
   return { ok: true };
 }
 

@@ -318,6 +318,20 @@ export function BoardCanvas({
     );
   }
 
+  function setCardLabels(
+    cardId: string,
+    labels: NonNullable<BoardCardModel["labels"]>,
+  ) {
+    setLists((prev) =>
+      prev.map((list) => ({
+        ...list,
+        cards: list.cards.map((card) =>
+          card.id === cardId ? { ...card, labels } : card,
+        ),
+      })),
+    );
+  }
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
@@ -536,6 +550,7 @@ export function BoardCanvas({
             seed={cardSeed(openCardId)}
             boardContext={boardContext}
             onMembersChange={setCardMembers}
+            onLabelsChange={setCardLabels}
             onOpenChange={(next) => {
               if (!next) setOpenCardId(null);
             }}
@@ -612,6 +627,7 @@ export function BoardCanvas({
           seed={cardSeed(openCardId)}
           boardContext={boardContext}
           onMembersChange={setCardMembers}
+          onLabelsChange={setCardLabels}
           onOpenChange={(next) => {
             if (!next) setOpenCardId(null);
           }}

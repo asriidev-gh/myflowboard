@@ -86,6 +86,8 @@ interface CardDetailDialogProps {
   boardContext: BoardCardContext;
   /** Keep the board canvas in sync when assignees change. */
   onMembersChange?: (cardId: string, members: CardDetailMember[]) => void;
+  /** Keep the board canvas in sync when labels change. */
+  onLabelsChange?: (cardId: string, labels: CardDetailLabel[]) => void;
 }
 
 function initials(name: string | null, email: string) {
@@ -118,6 +120,7 @@ export function CardDetailDialog({
   seed,
   boardContext,
   onMembersChange,
+  onLabelsChange,
 }: CardDetailDialogProps) {
   const queryClient = useQueryClient();
   const [pending, startTransition] = useTransition();
@@ -127,8 +130,12 @@ export function CardDetailDialog({
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState<string>(LABEL_COLORS[0]);
   const [createdLabels, setCreatedLabels] = useState<CardDetailLabel[]>([]);
-  const [assignPendingIds, setAssignPendingIds] = useState<Set<string>>(
-    () => new Set(),
+  /** Local UI source of truth so toggles feel instant (query cache may be empty while placeholder). */
+  const [localMembers, setLocalMembers] = useState<CardDetailMember[] | null>(
+    null,
+  );
+  const [localLabels, setLocalLabels] = useState<CardDetailLabel[] | null>(
+    null,
   );
 
   const {
@@ -146,12 +153,39 @@ export function CardDetailDialog({
       seed ? seedToCardDetail(seed) : undefined,
   });
 
+  useEffect(() => {
+    setLocalMembers(null);
+    setLocalLabels(null);
+    setCreatedLabels([]);
+  }, [cardId]);
+
+  useEffect(() => {
+    if (!card) return;
+    setLocalMembers((prev) =>
+      prev ?? card.members.map((entry) => entry.user),
+    );
+    setLocalLabels((prev) =>
+      prev ?? card.labels.map((entry) => entry.label),
+    );
+  }, [card]);
+
   const boardLabels = [
     ...boardContext.boardLabels,
     ...createdLabels.filter(
       (label) => !boardContext.boardLabels.some((b) => b.id === label.id),
     ),
   ];
+
+  const activeMembers =
+    localMembers ??
+    card?.members.map((entry) => entry.user) ??
+    seed?.members ??
+    [];
+  const activeLabels =
+    localLabels ??
+    card?.labels.map((entry) => entry.label) ??
+    seed?.labels ??
+    [];
 
   const title =
     titleDraft ?? card?.title ?? seed?.title ?? "";
@@ -175,61 +209,76 @@ export function CardDetailDialog({
     });
   }
 
-  function applyMembers(nextMembers: CardDetailMember[]) {
+  function syncMembers(nextMembers: CardDetailMember[]) {
+    setLocalMembers(nextMembers);
+    onMembersChange?.(cardId, nextMembers);
     queryClient.setQueryData(
       cardDetailQueryKey(cardId),
       (current: CardDetail | undefined) => {
-        if (!current) return current;
+        const base =
+          current ?? (seed ? seedToCardDetail(seed) : undefined);
+        if (!base) return base;
         return {
-          ...current,
+          ...base,
           members: nextMembers.map((user) => ({ user })),
         };
       },
     );
-    onMembersChange?.(cardId, nextMembers);
+  }
+
+  function syncLabels(nextLabels: CardDetailLabel[]) {
+    setLocalLabels(nextLabels);
+    onLabelsChange?.(cardId, nextLabels);
+    queryClient.setQueryData(
+      cardDetailQueryKey(cardId),
+      (current: CardDetail | undefined) => {
+        const base =
+          current ?? (seed ? seedToCardDetail(seed) : undefined);
+        if (!base) return base;
+        return {
+          ...base,
+          labels: nextLabels.map((label) => ({ label })),
+        };
+      },
+    );
   }
 
   function toggleMember(member: CardDetailMember, assigned: boolean) {
-    if (!canEdit || assignPendingIds.has(member.id)) return;
+    if (!canEdit) return;
 
-    const cached = queryClient.getQueryData<CardDetail>(
-      cardDetailQueryKey(cardId),
-    );
-    if (!cached) return;
-
-    const previousAssigned = assigned;
-    const users = cached.members.map((entry) => entry.user);
-    applyMembers(
-      assigned
-        ? users.filter((user) => user.id !== member.id)
-        : [...users, member],
-    );
-
-    setAssignPendingIds((prev) => new Set(prev).add(member.id));
+    const previous = activeMembers;
+    const next = assigned
+      ? previous.filter((user) => user.id !== member.id)
+      : [...previous, member];
+    syncMembers(next);
 
     void toggleCardMemberAction({
-      cardId: cached.id,
+      cardId,
       userId: member.id,
-    })
-      .then((result) => {
-        if (result.ok) return;
+    }).then((result) => {
+      if (result.ok) return;
+      syncMembers(previous);
+      toast.error(result.error ?? "Could not update assignee");
+    });
+  }
 
-        const latest = queryClient.getQueryData<CardDetail>(
-          cardDetailQueryKey(cardId),
-        );
-        const without = (latest?.members ?? [])
-          .map((entry) => entry.user)
-          .filter((user) => user.id !== member.id);
-        applyMembers(previousAssigned ? [...without, member] : without);
-        toast.error(result.error ?? "Could not update assignee");
-      })
-      .finally(() => {
-        setAssignPendingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(member.id);
-          return next;
-        });
-      });
+  function toggleLabel(label: CardDetailLabel, active: boolean) {
+    if (!canEdit) return;
+
+    const previous = activeLabels;
+    const next = active
+      ? previous.filter((item) => item.id !== label.id)
+      : [...previous, label];
+    syncLabels(next);
+
+    void toggleCardLabelAction({
+      cardId,
+      labelId: label.id,
+    }).then((result) => {
+      if (result.ok) return;
+      syncLabels(previous);
+      toast.error(result.error ?? "Could not update label");
+    });
   }
 
   const detailsReady = !!card && !isPlaceholderData;
@@ -663,16 +712,14 @@ export function CardDetailDialog({
                   ) : (
                     <ul className="space-y-1">
                       {boardContext.workspaceMembers.map((member) => {
-                        const assigned = card.members.some(
-                          (m) => m.user.id === member.id,
+                        const assigned = activeMembers.some(
+                          (m) => m.id === member.id,
                         );
-                        const busy =
-                          !canEdit || assignPendingIds.has(member.id);
                         return (
                           <li key={member.id}>
                             <button
                               type="button"
-                              disabled={busy}
+                              disabled={!canEdit}
                               aria-pressed={assigned}
                               aria-label={
                                 assigned
@@ -680,7 +727,7 @@ export function CardDetailDialog({
                                   : `Assign ${member.name ?? member.email}`
                               }
                               className={cn(
-                                "flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-sm transition-colors hover:bg-muted/80 disabled:opacity-60",
+                                "flex w-full cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-sm transition-colors hover:bg-muted/80 disabled:cursor-not-allowed disabled:opacity-60",
                                 assigned && "bg-brand/10",
                               )}
                               onClick={() => toggleMember(member, assigned)}
@@ -743,27 +790,21 @@ export function CardDetailDialog({
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {boardLabels.map((label) => {
-                      const active = card.labels.some(
-                        (l) => l.label.id === label.id,
+                      const active = activeLabels.some(
+                        (item) => item.id === label.id,
                       );
                       return (
                         <button
                           key={label.id}
                           type="button"
-                          disabled={!canEdit || pending}
+                          disabled={!canEdit}
+                          aria-pressed={active}
                           className={cn(
-                            "rounded-md px-2 py-1 text-xs font-medium text-white",
+                            "cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-white transition-opacity disabled:cursor-not-allowed",
                             !active && "opacity-40",
                           )}
                           style={{ backgroundColor: label.color }}
-                          onClick={() =>
-                            run(() =>
-                              toggleCardLabelAction({
-                                cardId: card.id,
-                                labelId: label.id,
-                              }),
-                            )
-                          }
+                          onClick={() => toggleLabel(label, active)}
                         >
                           {label.name}
                         </button>
@@ -784,7 +825,7 @@ export function CardDetailDialog({
                             key={color}
                             type="button"
                             className={cn(
-                              "size-5 rounded-full",
+                              "size-5 cursor-pointer rounded-full",
                               newLabelColor === color &&
                                 "ring-2 ring-offset-2 ring-foreground",
                             )}
@@ -796,34 +837,40 @@ export function CardDetailDialog({
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={!newLabelName.trim()}
-                        onClick={() =>
-                          run(async () => {
-                            const name = newLabelName.trim();
+                        className="cursor-pointer"
+                        disabled={!newLabelName.trim() || pending}
+                        onClick={() => {
+                          const name = newLabelName.trim();
+                          if (!name || !card) return;
+                          startTransition(async () => {
                             const created = await createLabelAction({
                               boardId: card.list.board.id,
                               name,
                               color: newLabelColor,
                             });
-                            if (!created.ok) return created;
-                            setNewLabelName("");
-                            if (created.id) {
-                              setCreatedLabels((prev) => [
-                                ...prev,
-                                {
-                                  id: created.id!,
-                                  name,
-                                  color: newLabelColor,
-                                },
-                              ]);
-                              return toggleCardLabelAction({
-                                cardId: card.id,
-                                labelId: created.id,
-                              });
+                            if (!created.ok) {
+                              toast.error(created.error);
+                              return;
                             }
-                            return created;
-                          })
-                        }
+                            setNewLabelName("");
+                            if (!created.id) return;
+                            const label = {
+                              id: created.id,
+                              name,
+                              color: newLabelColor,
+                            };
+                            setCreatedLabels((prev) => [...prev, label]);
+                            syncLabels([...activeLabels, label]);
+                            const toggle = await toggleCardLabelAction({
+                              cardId: card.id,
+                              labelId: created.id,
+                            });
+                            if (!toggle.ok) {
+                              syncLabels(activeLabels);
+                              toast.error(toggle.error);
+                            }
+                          });
+                        }}
                       >
                         Add label
                       </Button>

@@ -20,6 +20,7 @@ import { BoardViewSwitcher } from "@/features/boards/components/board-view-switc
 import { CardDetailDialog } from "@/features/cards/components/card-detail-dialog";
 import type {
   BoardCardContext,
+  CardDetailLabel,
   CardDetailMember,
   CardDetailSeed,
 } from "@/features/cards/types";
@@ -163,6 +164,17 @@ export function BoardShell({
     );
   }
 
+  function setCardLabels(cardId: string, labels: CardDetailLabel[]) {
+    setLists((prev) =>
+      prev.map((list) => ({
+        ...list,
+        cards: list.cards.map((card) =>
+          card.id === cardId ? { ...card, labels } : card,
+        ),
+      })),
+    );
+  }
+
   function changeView(next: BoardViewMode) {
     setView(next);
     const params = new URLSearchParams();
@@ -232,6 +244,7 @@ export function BoardShell({
           seed={cardSeed(openCardId)}
           boardContext={boardContext}
           onMembersChange={setCardMembers}
+          onLabelsChange={setCardLabels}
           onOpenChange={(next) => {
             if (!next) {
               setOpenCardId(null);
